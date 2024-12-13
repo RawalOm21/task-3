@@ -8,19 +8,18 @@ def index():
 
 user_list = [
     {
-        "id": 0,
+
         "username": "Alice",
         "email": "alice@example.com",
         "password": "password123"
     },
     {
-        "id": 1,
+
         "username": "Bob",
         "email": "bob@example.com",
         "password": "password456"
     },
     {
-        "id": 2,
         "username": "Charlie",
         "email": "charlie@example.com",
         "password": "password789"
@@ -39,10 +38,10 @@ def users():
         new_user = request.form['username']
         new_email = request.form['email']
         new_password = request.form['password']
-        new_id = user_list[-1]['id'] + 1
+
         
         new_obj = {
-            "id": new_id,
+
             "username": new_user,
             "email": new_email,
             "password": new_password

@@ -41,7 +41,7 @@ def login():
     return jsonify(access_token=access_token)
 
 @app.route('/users', methods=['GET', 'POST'])
-@jwt_required()
+@jwt_required()# automatic authentication occurs here 
 def users():
     if request.method == 'GET':
         if len(user_list) > 0:
@@ -62,6 +62,12 @@ def users():
         }
         user_list.append(new_obj)
         return make_response(jsonify(new_obj), 201)
+
+@app.route('/validate-token', methods=['GET'])
+@jwt_required()
+def validate_token():
+    identity = get_jwt_identity()  # Retrieve the identity of the current token
+    return jsonify({"msg": "Token is valid", "identity": identity}), 200
 
 @app.route('/<name>')
 def print_name(name):

@@ -49,7 +49,12 @@ def users():
         }
         user_list.append(new_obj)
         return make_response(jsonify(new_obj), 201)
-
+@app.route('/deluser', methods=['POST'])
+def deluser():
+    print("Received a POST request to /deluser")  
+    global user_list
+    user_list = []
+    return make_response('User list cleared', 200)
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)

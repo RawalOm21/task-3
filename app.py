@@ -1,8 +1,12 @@
+
 from flask import Flask, request, jsonify, make_response
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import random
+from datetime import timedelta
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = random._urandom(32)
+#token creation and expiration time  
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=20)
 jwt = JWTManager(app)
 
 @app.route('/')
@@ -37,8 +41,10 @@ def login():
     user = next((user for user in user_list if user['username'] == username and user['password'] == password), None)
     if user is None:
         return make_response(jsonify({"msg": "Bad username or password"}), 401)
+    #delay simulation 
+    delay_time = 5
     access_token = create_access_token(identity=username)
-    return jsonify(access_token=access_token)
+    return jsonify({"msg":f"Token created in {delay_time} minutes", "access_token": access_token}), 200
 
 @app.route('/users', methods=['GET', 'POST'])
 @jwt_required()# automatic authentication occurs here 
@@ -69,17 +75,13 @@ def validate_token():
     identity = get_jwt_identity()  # Retrieve the identity of the current token
     return jsonify({"msg": "Token is valid", "identity": identity}), 200
 
-@app.route('/<name>')
-def print_name(name):
-    return 'Hello, {}'.format(name)  
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
 
+"""
 
-
-
-"""from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response
 
 app = Flask(__name__)
 

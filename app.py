@@ -34,6 +34,7 @@ def users():
             return make_response(jsonify(user_list), 200)
         else:
             return make_response('Nothing found', 404)
+        
     if request.method == 'POST':
         new_user = request.form['username']
         new_email = request.form['email']
@@ -49,9 +50,6 @@ def users():
         user_list.append(new_obj)
         return make_response(jsonify(new_obj), 201)
 
-@app.route('/<name>')
-def print_name(name):
-    return 'Hello, {}'.format(name)  
 
 if __name__ == '__main__':
     app.run()

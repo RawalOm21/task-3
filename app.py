@@ -1,145 +1,89 @@
 
-from flask import Flask, request, jsonify, make_response
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-import random
-from datetime import timedelta
-app = Flask(__name__)
-app.config['JWT_SECRET_KEY'] = random._urandom(32)
-#token creation and expiration time  
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=20)
-jwt = JWTManager(app)
-
-@app.route('/')
-def index():
-    return 'Hello World'
-
-user_list = [
-    {
-        "id": 0,
-        "username": "Alice",
-        "email": "alice@example.com",
-        "password": "password123"
-    },
-    {
-        "id": 1,
-        "username": "Bob",
-        "email": "bob@example.com",
-        "password": "password456"
-    },
-    {
-        "id": 2,
-        "username": "Charlie",
-        "email": "charlie@example.com",
-        "password": "password789"
-    }
-]
-
-@app.route('/login', methods=['POST'])
-def login():
-    username = request.json.get('username', None)
-    password = request.json.get('password', None)
-    user = next((user for user in user_list if user['username'] == username and user['password'] == password), None)
-    if user is None:
-        return make_response(jsonify({"msg": "Bad username or password"}), 401)
-    #delay simulation 
-    delay_time = 5
-    access_token = create_access_token(identity=username)
-    return jsonify({"msg":f"Token created in {delay_time} minutes", "access_token": access_token}), 200
-
-@app.route('/users', methods=['GET', 'POST'])
-@jwt_required()# automatic authentication occurs here 
-def users():
-    if request.method == 'GET':
-        if len(user_list) > 0:
-            return make_response(jsonify(user_list), 200)
-        else:
-            return make_response('Nothing found', 404)
-    if request.method == 'POST':
-        new_user = request.form['username']
-        new_email = request.form['email']
-        new_password = request.form['password']
-        new_id = user_list[-1]['id'] + 1
-        
-        new_obj = {
-            "id": new_id,
-            "username": new_user,
-            "email": new_email,
-            "password": new_password
-        }
-        user_list.append(new_obj)
-        return make_response(jsonify(new_obj), 201)
-
-@app.route('/validate-token', methods=['GET'])
-@jwt_required()
-def validate_token():
-    identity = get_jwt_identity()  # Retrieve the identity of the current token
-    return jsonify({"msg": "Token is valid", "identity": identity}), 200
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-"""
-
-from flask import Flask, request, jsonify, make_response
-
+from flask import Flask, request, jsonify, send_from_directory
+import json
+import sqlite3
+import os 
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return 'Hello World'
 
-user_list = [
-    {
+def db_connection():
+    conn = None
+    try:
+        conn = sqlite3.connect("books.sqlite")
+    except sqlite3.error as e:
+        print(e)
+    return conn
 
-        "username": "Alice",
-        "email": "alice@example.com",
-        "password": "password123"
-    },
-    {
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-        "username": "Bob",
-        "email": "bob@example.com",
-        "password": "password456"
-    },
-    {
-        "username": "Charlie",
-        "email": "charlie@example.com",
-        "password": "password789"
-    }
-]
+@app.route("/books", methods=["GET", "POST"])
+def books():
+    conn = db_connection()
+    cursor = conn.cursor()
 
-@app.route('/users', methods=['GET', 'POST'])
-def users():
-    if request.method == 'GET':
-        if len(user_list) > 0:
-            return make_response(jsonify(user_list), 200)
+    if request.method == "GET":
+        cursor = conn.execute("SELECT * FROM book")
+        books = [
+            dict(id=row[0], author=row[1], language=row[2], title=row[3])
+            for row in cursor.fetchall()
+        ]
+        if books is not None:
+            return jsonify(books)
+
+    if request.method == "POST":
+        new_author = request.form["author"]
+        new_lang = request.form["language"]
+        new_title = request.form["title"]
+        sql = """INSERT INTO book (author, language, title)
+                 VALUES (?, ?, ?)"""
+        cursor = cursor.execute(sql, (new_author, new_lang, new_title))
+        conn.commit()
+        return f"Book with the id: 0 created successfully", 201
+
+
+@app.route("/book/<int:id>", methods=["GET", "PUT", "DELETE"])
+def single_book(id):
+    conn = db_connection()
+    cursor = conn.cursor()
+    book = None
+    if request.method == "GET":
+        cursor.execute("SELECT * FROM book WHERE id=?", (id,))
+        rows = cursor.fetchall()
+        for r in rows:
+            book = r
+        if book is not None:
+            return jsonify(book), 200
         else:
-            return make_response('Nothing found', 404)
-        
-    if request.method == 'POST':
-        new_user = request.form['username']
-        new_email = request.form['email']
-        new_password = request.form['password']
+            return "Something wrong", 404
 
-        
-        new_obj = {
+    if request.method == "PUT":
+        sql = """UPDATE book
+                SET title=?,
+                    author=?,
+                    language=?
+                WHERE id=? """
 
-            "username": new_user,
-            "email": new_email,
-            "password": new_password
+        author = request.form["author"]
+        language = request.form["language"]
+        title = request.form["title"]
+        updated_book = {
+            "id": id,
+            "author": author,
+            "language": language,
+            "title": title,
         }
-        user_list.append(new_obj)
-        return make_response(jsonify(new_obj), 201)
-    
-@app.route('/deluser', methods=['POST'])
-def deluser():
-    print("Received a POST request to /deluser")  
-    global user_list
-    user_list = []
-    return make_response('User list cleared', 200)
+        conn.execute(sql, (author, language, title, id))
+        conn.commit()
+        return jsonify(updated_book)
+
+    if request.method == "DELETE":
+        sql = """ DELETE FROM book WHERE id=? """
+        conn.execute(sql, (id,))
+        conn.commit()
+        return "The book with id: {} has been ddeleted.".format(id), 200
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
-"""

@@ -2,14 +2,23 @@ from flask import Flask, request, jsonify, send_from_directory, make_response
 import json
 import sqlite3
 import os
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, unset_jwt_cookies
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, unset_jwt_cookies, get_jwt
 from app_config import Config
 from user import add_user, get_all_users
+from datetime import timedelta, datetime
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
+
 jwt = JWTManager(app)
+blacklist = set()
+
+@jwt.token_in_blocklist_loader
+def check_if_token_revoked(jwt_header, jwt_payload):
+    jti = jwt_payload['jti']
+    return jti in blacklist
+
 
 def db_connection():
     conn = None
@@ -38,7 +47,15 @@ def login():
     if user is None:
         return make_response(jsonify({"msg": "Bad username or password"}), 401)
     
-    access_token = create_access_token(identity=username)
+    additional_claims = {
+        "sub": username,
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(minutes=15),
+        "nbf": datetime.utcnow() + timedelta(minutes=10),
+        "iss": "your-issuer",
+        "aud": "your-audience"
+    }
+    access_token = create_access_token(identity=username , additional_claims=additional_claims)
     return jsonify(access_token=access_token)
 
 @app.route("/users", methods=["GET", "POST"])
@@ -132,19 +149,53 @@ def single_book(id):
         conn.execute(sql, (id,))
         conn.commit()
         return f"Book with the id: {id} deleted successfully", 200
-
+"""
 @app.route('/check_token', methods=['GET'])
 @jwt_required()
 def check_token():
     current_user = get_jwt_identity()
+    jwt_data = get_jwt()
+    iat= datetime.fromtimestamp(jwt_data['iat'])
+    if datetime.utcnow() < iat + timedelta(minutes=1):
+        return jsonify({"msg":"Token not valid yet"}), 401
     return jsonify(logged_in_as=current_user), 200
 
+"""
+@app.route('/check_token', methods=['GET'])
+@jwt_required()
+def check_token():
+    current_user = get_jwt_identity()
+    jwt_data = get_jwt()
+    iat = datetime.fromtimestamp(jwt_data['iat'])
+    exp = datetime.fromtimestamp(jwt_data['exp'])
+    nbf = datetime.fromtimestamp(jwt_data['nbf'])
+    iss = jwt_data['iss']
+    aud = jwt_data['aud']
+    now = datetime.utcnow()
+    """if now < iat + timedelta(minutes=1):
+        return jsonify({"msg": "Token not valid yet"}), 401
+    elif now < iat + timedelta(minutes=2):
+        return jsonify({"msg": "Token is valid but will expire soon"}), 200
+    elif now > exp:
+        return jsonify({"msg": "Token has expired"}), 401
+    else:
+        return jsonify(logged_in_as=current_user), 200
+
+    if now < nbf:
+        return jsonify({"msg": "Token not valid yet"}), 401
+    if now > exp:
+        return jsonify({"msg": "Token has expired"}), 401
+    return jsonify(logged_in_as=current_user, iat=iat, exp=exp, nbf=nbf, iss=iss, aud=aud), 200
+"""
+    if now > exp:
+        return jsonify({"msg": exp}), 401
+    return jsonify(logged_in_as=current_user, iat=iat, exp=exp, nbf=nbf, iss=iss, aud=aud), 200
 @app.route('/logout', methods=['POST'])
+@jwt_required()
 def logout():
-    response = jsonify({"msg": "Logout successful"})
-    unset_jwt_cookies(response)
-    return response, 200
-    
+    jti = get_jwt()['jti']
+    blacklist.add(jti)
+    return jsonify({"msg": "Successfully logged out"}), 200
     
 if __name__ == '__main__':
     app.run(debug=True)

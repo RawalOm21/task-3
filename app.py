@@ -1,28 +1,78 @@
-
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 import json
 import sqlite3
-import os 
-app = Flask(__name__)
+import os
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from app_config import Config
+from user import add_user, get_all_users
 
+app = Flask(__name__)
+app.config.from_object(Config)
+
+jwt = JWTManager(app)
 
 def db_connection():
     conn = None
     try:
-        conn = sqlite3.connect("books.sqlite")
-    except sqlite3.error as e:
+        conn = sqlite3.connect(app.config['SQLALCHEMY_DATABASE_URI'])
+    except sqlite3.Error as e:
         print(e)
     return conn
 
+@app.route("/")
+def index():
+    return "Welcome to the Book API!"
+
 @app.route("/favicon.ico")
 def favicon():
-    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.json.get('username', None)
+    password = request.json.get('password', None)
+    users = get_all_users()
+    user = next((user for user in users if user['username'] == username and user['password'] == password), None)
+    if user is None:
+        return make_response(jsonify({"msg": "Bad username or password"}), 401)
+    
+    access_token = create_access_token(identity=username)
+    return jsonify(access_token=access_token)
+
+@app.route("/users", methods=["GET", "POST"])
+@jwt_required()
+def users():
+    if request.method == "GET":
+        users = get_all_users()
+        return jsonify(users), 200
+
+    if request.method == "POST":
+        new_username = request.form["username"]
+        new_email = request.form["email"]
+        new_password = request.form["password"]
+        add_user(new_username, new_email, new_password)
+        return f"User {new_username} created successfully", 201
+
+# Add a user (run this once to add a user)
+from user import add_user
+add_user("Alice", "alice@example.com", "password123")
+
+#register a user
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.json.get('username', None)
+    email = request.json.get('email', None)
+    password = request.json.get('password', None)
+    add_user(username, email, password)
+    return jsonify({"msg": "User created successfully"}), 201
 
 @app.route("/books", methods=["GET", "POST"])
+@jwt_required()
 def books():
     conn = db_connection()
     cursor = conn.cursor()
-
     if request.method == "GET":
         cursor = conn.execute("SELECT * FROM book")
         books = [
@@ -40,10 +90,10 @@ def books():
                  VALUES (?, ?, ?)"""
         cursor = cursor.execute(sql, (new_author, new_lang, new_title))
         conn.commit()
-        return f"Book with the id: 0 created successfully", 201
-
+        return f"Book with the id: {cursor.lastrowid} created successfully", 201
 
 @app.route("/book/<int:id>", methods=["GET", "PUT", "DELETE"])
+@jwt_required()
 def single_book(id):
     conn = db_connection()
     cursor = conn.cursor()
@@ -64,7 +114,6 @@ def single_book(id):
                     author=?,
                     language=?
                 WHERE id=? """
-
         author = request.form["author"]
         language = request.form["language"]
         title = request.form["title"]
@@ -74,7 +123,7 @@ def single_book(id):
             "language": language,
             "title": title,
         }
-        conn.execute(sql, (author, language, title, id))
+        conn.execute(sql, (title, author, language, id))
         conn.commit()
         return jsonify(updated_book)
 
@@ -82,8 +131,13 @@ def single_book(id):
         sql = """ DELETE FROM book WHERE id=? """
         conn.execute(sql, (id,))
         conn.commit()
-        return "The book with id: {} has been ddeleted.".format(id), 200
+        return f"Book with the id: {id} deleted successfully", 200
 
+@app.route('/check_token', methods=['GET'])
+@jwt_required()
+def check_token():
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user), 200
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)

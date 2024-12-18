@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory, make_response
 import json
 import sqlite3
 import os
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, unset_jwt_cookies
 from app_config import Config
 from user import add_user, get_all_users
 
@@ -139,5 +139,12 @@ def check_token():
     current_user = get_jwt_identity()
     return jsonify(logged_in_as=current_user), 200
 
+@app.route('/logout', methods=['POST'])
+def logout():
+    response = jsonify({"msg": "Logout successful"})
+    unset_jwt_cookies(response)
+    return response, 200
+    
+    
 if __name__ == '__main__':
     app.run(debug=True)

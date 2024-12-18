@@ -42,18 +42,30 @@ def favicon():
 def login():
     username = request.json.get('username', None)
     password = request.json.get('password', None)
+    audience = request.json.get('audience', None)
     users = get_all_users()
     user = next((user for user in users if user['username'] == username and user['password'] == password), None)
     if user is None:
         return make_response(jsonify({"msg": "Bad username or password"}), 401)
+    if audience =="super-admin":
+        nbf = datetime.utcnow() + timedelta(minutes=10)
+        exp = datetime.utcnow() + timedelta(minutes=15)
+    elif audience =="admin":
+        nbf = datetime.utcnow() + timedelta(minutes=5)
+        exp = datetime.utcnow() + timedelta(minutes=10)
+    elif audience =="user":
+        nbf = datetime.utcnow()
+        exp = datetime.utcnow() + timedelta(minutes=5)
+    else:
+        return make_response(jsonify({"msg": "Invalid audience"}), 400)
     
     additional_claims = {
         "sub": username,
         "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(minutes=15),
-        "nbf": datetime.utcnow() + timedelta(minutes=10),
+        "exp": exp,
+        "nbf": nbf,
         "iss": "your-issuer",
-        "aud": "your-audience"
+        "aud": audience
     }
     access_token = create_access_token(identity=username , additional_claims=additional_claims)
     return jsonify(access_token=access_token)
